@@ -1,0 +1,10 @@
+date,data_source,pkg_version,pkg_platform,pkg_python,downloads
+2021-01-01,conda-forge,0.17.0,linux-64,2.7,3
+2021-01-01,conda-forge,0.17.0,linux-64,3.4,4
+2021-01-01,conda-forge,0.17.0,linux-64,3.5,4
+2021-01-01,conda-forge,0.17.1,linux-64,2.7,4
+2021-12-31,conda-forge,0.0.0,linux-64,2.7,1
+2021-12-31,conda-forge,0.17.0,linux-64,2.7,1
+2021-12-31,conda-forge,0.17.0,linux-64,3.4,2
+2021-12-31,conda-forge,0.17.0,linux-64,3.5,2
+2021-12-31,conda-forge,0.17.1,linux-64,2.7,2
