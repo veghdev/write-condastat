@@ -121,22 +121,22 @@ class WriteCondaStat:
 
     @staticmethod
     def download_condastat(
+        *data_source: Union[CondaStatDataSource, str],
         year: str,
         month: str,
         day: str,
         package: str,
-        data_source: str,
     ) -> Optional[pd.DataFrame]:
         """
         A method for downloading and filtering conda statistics.
 
         Args:
+            *data_source: Data source of the statistics.
+                For example anaconda, conda-forge, bioconda.
             year: Year of the statistics.
             month: Month of the statistics.
             day: Day of the statistics.
             package: Name of the package.
-            data_source: Data source of the statistics.
-                For example anaconda, conda-forge, bioconda.
 
         Returns:
             The filtered conda statistics.
@@ -151,16 +151,20 @@ class WriteCondaStat:
             )
         except FileNotFoundError:
             return none_stat
-        stat = stat.loc[(stat.data_source == data_source) & (stat.pkg_name == package)]
-        stat = stat.drop(columns=["time", "data_source", "pkg_name"])
-        stat = stat.groupby(["pkg_version", "pkg_platform", "pkg_python"]).sum()
+        sources = [CondaStatDataSource(source).value for source in data_source]
+        stat = stat.loc[
+            (stat["data_source"].isin(sources)) & (stat.pkg_name == package)
+        ]
+        stat = stat.drop(columns=["time", "pkg_name"])
+        stat = stat.groupby(
+            ["data_source", "pkg_version", "pkg_platform", "pkg_python"]
+        ).sum()
         stat = stat.reset_index()
         stat = stat.compute()
 
         stat = stat[stat["counts"] != 0]
         if stat.empty:
             return none_stat
-        stat.insert(0, "data_source", f"{data_source}")
         stat.insert(0, "package", f"{package}")
         stat.insert(0, "date", f"{year}-{month}-{day}")
         stat.rename(columns={"counts": "downloads"}, inplace=True)
@@ -202,21 +206,20 @@ class WriteCondaStat:
         self, *data_source: Union[CondaStatDataSource, str], stat_date: StatDate
     ) -> Optional[pd.DataFrame]:
         stats = None
-        for source in data_source:
-            for i in range((stat_date.end - stat_date.start).days + 1):
-                date = stat_date.start + timedelta(days=i)
-                year = date.strftime("%Y")
-                month = date.strftime("%m")
-                day = date.strftime("%d")
-                new_stats = WriteCondaStat.download_condastat(
-                    year,
-                    month,
-                    day,
-                    self._package_name,
-                    CondaStatDataSource(source).value,
-                )
-                if new_stats is not None:
-                    stats = pd.concat([stats, new_stats], ignore_index=True, sort=False)
+        for i in range((stat_date.end - stat_date.start).days + 1):
+            date = stat_date.start + timedelta(days=i)
+            year = date.strftime("%Y")
+            month = date.strftime("%m")
+            day = date.strftime("%d")
+            new_stats = WriteCondaStat.download_condastat(
+                *data_source,
+                year=year,
+                month=month,
+                day=day,
+                package=self._package_name,
+            )
+            if new_stats is not None:
+                stats = pd.concat([stats, new_stats], ignore_index=True, sort=False)
         if stats is not None:
             if not self.write_package_name:
                 stats.drop(["package"], inplace=True, axis=1, errors="ignore")

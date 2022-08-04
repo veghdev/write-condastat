@@ -24,12 +24,31 @@ STATS = dd.read_csv(
 class TestDownloadCondaStat(unittest.TestCase):
     """A class for testing WriteCondaStat.download_condastat() method."""
 
+    # def test_download_without_mock(self) -> None:
+    #     """A method for testing WriteCondaStat.download_condastat() without mock."""
+
+    #     stat = WriteCondaStat.download_condastat(
+    #         "conda-forge",
+    #         year="2022",
+    #         month="01",
+    #         day="01",
+    #         package="pandas",
+    #     )
+    #     self.assertEqual(
+    #         len(stat.index),  # type: ignore
+    #         265,
+    #     )
+
     def test_if_date_is_available(self) -> None:
         """A method for testing WriteCondaStat.download_condastat() if date is available."""
 
         with unittest.mock.patch("dask.dataframe.read_parquet", return_value=STATS):
             stat = WriteCondaStat.download_condastat(
-                "2022", "01", "01", "pandas", "conda-forge"
+                "conda-forge",
+                year="2022",
+                month="01",
+                day="01",
+                package="pandas",
             )
             self.assertEqual(
                 len(stat.index),  # type: ignore
@@ -44,7 +63,11 @@ class TestDownloadCondaStat(unittest.TestCase):
         ):
             self.assertEqual(
                 WriteCondaStat.download_condastat(
-                    "2000", "01", "01", "pandas", "conda-forge"
+                    "conda-forge",
+                    year="2000",
+                    month="01",
+                    day="01",
+                    package="pandas",
                 ),
                 None,
             )
@@ -55,7 +78,11 @@ class TestDownloadCondaStat(unittest.TestCase):
         with unittest.mock.patch("dask.dataframe.read_parquet", return_value=STATS):
             self.assertEqual(
                 WriteCondaStat.download_condastat(
-                    "2022", "01", "01", "not-existing-conda-package", "conda-forge"
+                    "conda-forge",
+                    year="2022",
+                    month="01",
+                    day="01",
+                    package="not-existing-conda-package",
                 ),
                 None,
             )
@@ -66,12 +93,14 @@ class TestDownloadCondaStat(unittest.TestCase):
         """
 
         with unittest.mock.patch("dask.dataframe.read_parquet", return_value=STATS):
-            self.assertEqual(
+            with self.assertRaises(ValueError):
                 WriteCondaStat.download_condastat(
-                    "2022", "01", "01", "pandas", "not-existing-data-source"
-                ),
-                None,
-            )
+                    "not-existing-data-source",
+                    year="2022",
+                    month="01",
+                    day="01",
+                    package="not-existing-conda-package",
+                )
 
 
 class TestGetCondaStat(unittest.TestCase):
