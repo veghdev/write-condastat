@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  workflow_call:
+
+jobs:
+
+  check_ci:
+
+    runs-on: ubuntu-20.04
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - uses: actions/cache@v3
+      with:
+        path: ./.venv
+        key: venv-${{ github.run_id }}
+
+    - name: Touch dev environment
+      run: make touch-dev
+          
+    - name: Check format
+      run: make check-format
+
+    - name: Run pylint
+      run: make lint
+      
+    - name: Check typing
+      run: make check-typing
+
+    - name: Run test
+      run: make test-wo-install
