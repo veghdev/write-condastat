@@ -462,13 +462,10 @@ class WriteCondaStat:
         dataf2 = dataf2.replace("null", np.nan)
         dataf2 = dataf2.replace("nan", np.nan)
         dataf2 = WriteCondaStat._set_data_frame_columns(dataf2)
-        merged = pd.merge(dataf1, dataf2, how="outer", on=[*keys])
+        merged = pd.merge(dataf1, dataf2, how="outer", on=[*keys], suffixes=("", "_y"))
         merged.sort_values([*keys], inplace=True)
-        if "downloads_y" in merged.columns:
-            merged.rename(columns={"downloads_x": "downloads"}, inplace=True)
-            merged.rename(columns={"downloads_y": "downloads_x"}, inplace=True)
-        merged.downloads.fillna(merged.downloads_x, inplace=True)
-        merged.drop(["downloads_x"], inplace=True, axis=1, errors="ignore")
+        merged.downloads.fillna(merged.downloads_y, inplace=True)
+        merged.drop(["downloads_y"], inplace=True, axis=1, errors="ignore")
         return merged
 
     @staticmethod

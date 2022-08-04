@@ -68,7 +68,7 @@ test-wo-install: $(DEV_BUILD_FLAG)
 	mkdir -p docs/coverage
 	$(VIRTUAL_ENV)/bin/coverage run --data-file docs/coverage/.coverage --branch --source writecondastat -m unittest discover tests
 	$(VIRTUAL_ENV)/bin/coverage html --data-file docs/coverage/.coverage -d docs/coverage
-	$(VIRTUAL_ENV)/bin/coverage report --data-file docs/coverage/.coverage -m --fail-under=0
+	$(VIRTUAL_ENV)/bin/coverage report --data-file docs/coverage/.coverage -m --fail-under=100
 
 test: $(DEV_BUILD_FLAG) install test-wo-install
 
