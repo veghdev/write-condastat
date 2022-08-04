@@ -6,4 +6,3 @@ pylint
 mypy
 coverage
 pdoc
-s3fs
