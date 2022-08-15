@@ -6,6 +6,8 @@ from os import PathLike
 from datetime import datetime, timedelta
 from typing import Optional, Union, List, Dict
 from enum import Enum
+import urllib
+import json
 
 import dask.dataframe as dd
 import pandas as pd  # type: ignore
@@ -50,8 +52,6 @@ class WriteCondaStat:
         self._write_package_name = False
         self._merge_stored_data = True
         self._fill_no_data = True
-        self._drop_percent_column = True
-        self._drop_total_row = True
 
     @property
     def outdir(self) -> Optional[Union[PathLike, str]]:
@@ -119,6 +119,28 @@ class WriteCondaStat:
     def fill_no_data(self, fill_no_data: bool = True):
         self._fill_no_data = bool(fill_no_data)
 
+    def _get_condastat_columns(self) -> List[str]:
+        header = []
+        header.append("date")
+        if self.write_package_name:
+            header.append("package")
+        header.append("data_source")
+        header.append("pkg_version")
+        header.append("pkg_platform")
+        header.append("pkg_python")
+        header.append("downloads")
+        return header
+
+    def _get_actual_condastat_columns(self) -> List[str]:
+        header = []
+        header.append("date")
+        if self.write_package_name:
+            header.append("package")
+        header.append("data_source")
+        header.append("pkg_version")
+        header.append("downloads")
+        return header
+
     @staticmethod
     def download_condastat(
         *data_source: Union[CondaStatDataSource, str],
@@ -169,6 +191,31 @@ class WriteCondaStat:
         stat.insert(0, "date", f"{year}-{month}-{day}")
         stat.rename(columns={"counts": "downloads"}, inplace=True)
         return stat
+
+    @staticmethod
+    def download_actual_condastat(
+        data_source: Union[CondaStatDataSource, str], package: str
+    ) -> Optional[dict]:
+        """
+        A method for downloading actual conda statistics.
+
+        Args:
+            *data_source: Data source of the statistics.
+                For example anaconda, conda-forge, bioconda.
+            package: Name of the package.
+
+        Returns:
+            The actual conda statistics.
+        """
+
+        try:
+            source = CondaStatDataSource(data_source).value
+            with urllib.request.urlopen(
+                f"https://api.anaconda.org/package/{source}/{package}/"
+            ) as url:
+                return json.load(url)
+        except urllib.error.HTTPError:
+            return None
 
     def get_condastat(
         self,
@@ -224,7 +271,7 @@ class WriteCondaStat:
             if not self.write_package_name:
                 stats.drop(["package"], inplace=True, axis=1, errors="ignore")
             stats.sort_values(
-                self._get_columns()[:-1],
+                self._get_condastat_columns()[:-1],
                 inplace=True,
             )
             date_index = stats.pop("date")
@@ -232,36 +279,58 @@ class WriteCondaStat:
             stats = WriteCondaStat._set_data_frame_columns(stats)
         return stats
 
-    def _get_columns(self) -> List[str]:
-        header = []
-        header.append("date")
-        header.append("data_source")
+    def _get_actual_condastat(
+        self, *data_source: Union[CondaStatDataSource, str]
+    ) -> Optional[pd.DataFrame]:
+        header = ["data_source", "pkg_version", "downloads"]
+        raw_stats = []
+        for source in data_source:
+            json_stats = WriteCondaStat.download_actual_condastat(
+                source, self._package_name
+            )
+            if json_stats is not None:
+                packages = json_stats["files"]
+                for package in packages:
+                    stat = []
+                    stat.append(source)
+                    stat.append(package["version"])
+                    stat.append(package["ndownloads"])
+                    raw_stats.append(stat)
+        stats = pd.DataFrame(raw_stats, columns=header)
+        stats = stats.groupby(["data_source", "pkg_version"]).sum()
+        stats = stats.reset_index()
         if self.write_package_name:
-            header.append("package")
-        header.append("pkg_version")
-        header.append("pkg_platform")
-        header.append("pkg_python")
-        header.append("downloads")
-        return header
+            stats.insert(0, "package", f"{self._package_name}")
+        date = datetime.now().strftime("%Y-%m-%d")
+        stats.insert(0, "date", f"{date}")
+        if stats.empty:
+            return None
+        return stats
 
     def _get_condastat_by_none(
         self,
         *data_source: Union[CondaStatDataSource, str],
         stat_date: StatDate,
+        actual=bool,
         postfix: Optional[str] = None,
     ) -> List[Dict[str, Union[str, pd.DataFrame, None]]]:
         stats = []
         stat_file = postfix if postfix is not None else "condastat"
         stat_file += ".csv"
-        stat = self._get_condastat(*data_source, stat_date=stat_date)
+        if actual:
+            stat = self._get_actual_condastat(*data_source)
+            keys = self._get_actual_condastat_columns()[:-1]
+        else:
+            stat = self._get_condastat(*data_source, stat_date=stat_date)
+            keys = self._get_condastat_columns()[:-1]
         if self.merge_stored_data:
             stat = WriteCondaStat._concat_with_stored_condastat(
                 stat,
                 self._get_stored_condastat(stat_file),
-                self._get_columns()[:-1],
+                keys,
             )
         if self.fill_no_data:
-            stat = self._concat_with_no_data(stat, stat_date)
+            stat = self._concat_with_no_data(stat, stat_date, actual)
         stats.append({"stat": stat, "stat_file": stat_file})
         return stats
 
@@ -270,8 +339,12 @@ class WriteCondaStat:
         *data_source: Union[CondaStatDataSource, str],
         start_date: datetime,
         end_date: datetime,
+        actual=bool,
         postfix: Optional[str] = None,
     ) -> List[Dict[str, Union[str, pd.DataFrame, None]]]:
+
+        # pylint: disable=too-many-locals)
+
         stats = []
         years = []
         actual_start_date = start_date
@@ -292,15 +365,20 @@ class WriteCondaStat:
                     start=actual_start_date.strftime("%Y-%m-%d"),
                     end=actual_end_date.strftime("%Y-%m-%d"),
                 )
-                stat = self._get_condastat(*data_source, stat_date=stat_date)
+                if actual:
+                    stat = self._get_actual_condastat(*data_source)
+                    keys = self._get_actual_condastat_columns()[:-1]
+                else:
+                    stat = self._get_condastat(*data_source, stat_date=stat_date)
+                    keys = self._get_condastat_columns()[:-1]
                 if self.merge_stored_data:
                     stat = WriteCondaStat._concat_with_stored_condastat(
                         stat,
                         self._get_stored_condastat(stat_file),
-                        self._get_columns()[:-1],
+                        keys,
                     )
                 if self.fill_no_data:
-                    stat = self._concat_with_no_data(stat, stat_date)
+                    stat = self._concat_with_no_data(stat, stat_date, actual)
                 stats.append({"stat": stat, "stat_file": stat_file})
                 actual_start_date = actual_year_end + timedelta(days=1)
         return stats
@@ -310,8 +388,12 @@ class WriteCondaStat:
         *data_source: Union[CondaStatDataSource, str],
         start_date: datetime,
         end_date: datetime,
+        actual=bool,
         postfix: Optional[str] = None,
     ) -> List[Dict[str, Union[str, pd.DataFrame, None]]]:
+
+        # pylint: disable=too-many-locals
+
         stats = []
         months = []
         actual_start_date = start_date
@@ -334,15 +416,20 @@ class WriteCondaStat:
                     start=actual_start_date.strftime("%Y-%m-%d"),
                     end=actual_end_date.strftime("%Y-%m-%d"),
                 )
-                stat = self._get_condastat(*data_source, stat_date=stat_date)
+                if actual:
+                    stat = self._get_actual_condastat(*data_source)
+                    keys = self._get_actual_condastat_columns()[:-1]
+                else:
+                    stat = self._get_condastat(*data_source, stat_date=stat_date)
+                    keys = self._get_condastat_columns()[:-1]
                 if self.merge_stored_data:
                     stat = WriteCondaStat._concat_with_stored_condastat(
                         stat,
                         self._get_stored_condastat(stat_file),
-                        self._get_columns()[:-1],
+                        keys,
                     )
                 if self.fill_no_data:
-                    stat = self._concat_with_no_data(stat, stat_date)
+                    stat = self._concat_with_no_data(stat, stat_date, actual)
                 stats.append(
                     {
                         "stat": stat,
@@ -357,6 +444,7 @@ class WriteCondaStat:
         *data_source: Union[CondaStatDataSource, str],
         start_date: datetime,
         end_date: datetime,
+        actual=bool,
         postfix: Optional[str] = None,
     ) -> List[Dict]:
         stats = []
@@ -368,15 +456,20 @@ class WriteCondaStat:
             stat_date = StatDate(
                 start=day.strftime("%Y-%m-%d"), end=day.strftime("%Y-%m-%d")
             )
-            stat = self._get_condastat(*data_source, stat_date=stat_date)
+            if actual:
+                stat = self._get_actual_condastat(*data_source)
+                keys = self._get_actual_condastat_columns()[:-1]
+            else:
+                stat = self._get_condastat(*data_source, stat_date=stat_date)
+                keys = self._get_condastat_columns()[:-1]
             if self.merge_stored_data:
                 stat = WriteCondaStat._concat_with_stored_condastat(
                     stat,
                     self._get_stored_condastat(stat_file),
-                    self._get_columns()[:-1],
+                    keys,
                 )
             if self.fill_no_data:
-                stat = self._concat_with_no_data(stat, stat_date)
+                stat = self._concat_with_no_data(stat, stat_date, actual)
             stats.append(
                 {
                     "stat": stat,
@@ -422,19 +515,30 @@ class WriteCondaStat:
         return days
 
     def _concat_with_no_data(
-        self, stat: Optional[pd.DataFrame], stat_date: StatDate
+        self, stat: Optional[pd.DataFrame], stat_date: StatDate, actual: bool
     ) -> pd.DataFrame:
         days = WriteCondaStat._get_days(stat_date)
 
-        no_data = {
-            "date": days,
-            "package": self._package_name,
-            "data_source": np.nan,
-            "pkg_version": np.nan,
-            "pkg_platform": np.nan,
-            "pkg_python": np.nan,
-            "downloads": 0,
-        }
+        if actual:
+            no_data = {
+                "date": days,
+                "package": self._package_name,
+                "data_source": np.nan,
+                "pkg_version": np.nan,
+                "downloads": 0,
+            }
+            keys = self._get_actual_condastat_columns()[:-1]
+        else:
+            no_data = {
+                "date": days,
+                "package": self._package_name,
+                "data_source": np.nan,
+                "pkg_version": np.nan,
+                "pkg_platform": np.nan,
+                "pkg_python": np.nan,
+                "downloads": 0,
+            }
+            keys = self._get_condastat_columns()[:-1]
 
         if not self.write_package_name:
             del no_data["package"]
@@ -444,7 +548,7 @@ class WriteCondaStat:
             no_data_df = WriteCondaStat._merge_data_frames(
                 stat,
                 no_data_df,
-                self._get_columns()[:-1],
+                keys,
             )
         else:
             no_data_df = pd.DataFrame(data=no_data)
@@ -515,12 +619,35 @@ class WriteCondaStat:
         """
 
         stat_date = StatDate(start=start_date, end=end_date)
-        self._write_condastats(*data_source, stat_date=stat_date, postfix=postfix)
+        self._write_condastats(
+            *data_source, stat_date=stat_date, actual=False, postfix=postfix
+        )
+
+    def write_actual_condastat(
+        self,
+        *data_source: Union[CondaStatDataSource, str],
+        postfix: Optional[str] = "condastat_actual",
+    ) -> None:
+        """
+        Writes actual conda statistics into csv files.
+
+        Args:
+            *data_source: Type of the data source.
+                For example CondaStatDataSource.CONDAFORGE.
+            postfix (optional): Postfix of the csv files.
+        """
+
+        date = datetime.now().strftime("%Y-%m-%d")
+        stat_date = StatDate(start=date, end=date)
+        self._write_condastats(
+            *data_source, stat_date=stat_date, actual=True, postfix=postfix
+        )
 
     def _write_condastats(
         self,
         *data_source: Union[CondaStatDataSource, str],
         stat_date: StatDate,
+        actual: bool,
         postfix: Optional[str],
     ) -> None:
         stats = []
@@ -529,6 +656,7 @@ class WriteCondaStat:
                 *data_source,
                 start_date=stat_date.start,
                 end_date=stat_date.end,
+                actual=actual,
                 postfix=postfix,
             )
         elif self.date_period == StatPeriod.MONTH:
@@ -536,6 +664,7 @@ class WriteCondaStat:
                 *data_source,
                 start_date=stat_date.start,
                 end_date=stat_date.end,
+                actual=actual,
                 postfix=postfix,
             )
         elif self.date_period == StatPeriod.YEAR:
@@ -543,11 +672,12 @@ class WriteCondaStat:
                 *data_source,
                 start_date=stat_date.start,
                 end_date=stat_date.end,
+                actual=actual,
                 postfix=postfix,
             )
         else:
             stats += self._get_condastat_by_none(
-                *data_source, stat_date=stat_date, postfix=postfix
+                *data_source, stat_date=stat_date, actual=actual, postfix=postfix
             )
 
         for stat in stats:
