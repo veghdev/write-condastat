@@ -292,7 +292,7 @@ class WriteCondaStat:
                 packages = json_stats["files"]
                 for package in packages:
                     stat = []
-                    stat.append(source)
+                    stat.append(CondaStatDataSource(source).value)
                     stat.append(package["version"])
                     stat.append(package["ndownloads"])
                     raw_stats.append(stat)
