@@ -13,7 +13,7 @@ with open("README.md", encoding="utf8") as fp:
 
 setup(
     name="write-condastat",
-    version="0.1.0",
+    version="0.2.0",
     description=(
         "write-condastat makes it easy to collect, filter and save conda statistics to csv files."
     ),
