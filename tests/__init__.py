@@ -1,0 +1,1 @@
+"""write-condastat test modules."""
