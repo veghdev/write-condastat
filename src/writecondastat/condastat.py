@@ -342,7 +342,6 @@ class WriteCondaStat:
         actual=bool,
         postfix: Optional[str] = None,
     ) -> List[Dict[str, Union[str, pd.DataFrame, None]]]:
-
         # pylint: disable=too-many-locals)
 
         stats = []
@@ -391,7 +390,6 @@ class WriteCondaStat:
         actual=bool,
         postfix: Optional[str] = None,
     ) -> List[Dict[str, Union[str, pd.DataFrame, None]]]:
-
         # pylint: disable=too-many-locals
 
         stats = []
@@ -496,7 +494,6 @@ class WriteCondaStat:
         stat_stored: Optional[pd.DataFrame],
         keys: List[str],
     ) -> Optional[pd.DataFrame]:
-
         if stat is None:
             return stat_stored
         if stat_stored is None:
