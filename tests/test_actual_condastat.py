@@ -45,7 +45,7 @@ class TestWriteActualCondaStat(unittest.TestCase):
         write_conda_stat.write_actual_condastat(
             CondaStatDataSource.CONDAFORGE,
         )
-        csv = f"{outdir}/2022_condastat_actual.csv"
+        csv = f"{outdir}/{datetime.now().strftime('%Y')}_condastat_actual.csv"
         with open(csv, "r", encoding="utf8") as out, open(
             f"{PATH}/assets/tests_ref/nan_with_packagename_actual.csv",
             "r",
@@ -69,7 +69,7 @@ class TestWriteActualCondaStat(unittest.TestCase):
         write_conda_stat.write_actual_condastat(
             CondaStatDataSource.CONDAFORGE,
         )
-        csv = f"{outdir}/2022_condastat_actual.csv"
+        csv = f"{outdir}/{datetime.now().strftime('%Y')}_condastat_actual.csv"
         with open(csv, "r", encoding="utf8") as out, open(
             f"{PATH}/assets/tests_ref/nan_actual.csv",
             "r",
