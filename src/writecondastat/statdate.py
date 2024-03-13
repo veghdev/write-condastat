@@ -1,6 +1,5 @@
 """A module for working with statistics time."""
 
-
 import calendar
 from enum import Enum
 from typing import Optional, Union

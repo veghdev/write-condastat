@@ -1,2 +1,2 @@
 pandas
-dask
+dask==2024.2.1
